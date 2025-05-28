@@ -2,6 +2,7 @@ package io.github.nayetdet;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
+import java.awt.event.InputEvent;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -26,17 +27,10 @@ public class Server {
     public Server(int imagePort, int controlPort) throws IOException, AWTException {
         robot = new Robot();
         screenBounds = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
-
         imageServerSocket = new ServerSocket(imagePort);
         controlServerSocket = new ServerSocket(controlPort);
         imageSocket = imageServerSocket.accept();
         controlSocket = controlServerSocket.accept();
-
-        DataOutputStream controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
-        controlOutputStream.writeInt(screenBounds.width);
-        controlOutputStream.writeInt(screenBounds.height);
-        controlOutputStream.flush();
-
         scheduler = Executors.newSingleThreadScheduledExecutor();
     }
 
@@ -66,6 +60,8 @@ public class Server {
                         int x = Integer.parseInt(actions[1]);
                         int y = Integer.parseInt(actions[2]);
                         robot.mouseMove(x, y);
+                        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+                        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
                     }
                 }
             } catch (IOException e) {
