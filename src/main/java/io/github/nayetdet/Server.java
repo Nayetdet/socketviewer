@@ -2,59 +2,84 @@ package io.github.nayetdet;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Server {
 
-    public static void main(String[] args) throws Exception {
-        ServerSocket imageSocket = new ServerSocket(5000);
-        ServerSocket controlSocket = new ServerSocket(5001);
+    private final Robot robot;
+    private final Rectangle screenBounds;
 
-        System.out.println("Aguardando conexão do cliente...");
-        Socket imageClient = imageSocket.accept();
-        Socket controlClient = controlSocket.accept();
-        System.out.println("Cliente conectado.");
+    private final Socket imageSocket;
+    private final Socket controlSocket;
 
-        Robot robot = new Robot();
-        Rectangle screenRectangle = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
-        OutputStream outputStream = imageClient.getOutputStream();
+    public Server(int imagePort, int controlPort) throws IOException, AWTException {
+        robot = new Robot();
+        screenBounds = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+        imageSocket = new ServerSocket(imagePort).accept();
+        controlSocket = new ServerSocket(controlPort).accept();
+    }
+
+    public void host() throws IOException {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                BufferedImage screen = robot.createScreenCapture(screenBounds);
+                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                ImageIO.write(screen, "jpg", byteArrayOutputStream);
+
+                byte[] bytes = byteArrayOutputStream.toByteArray();
+                DataOutputStream dataOutputStream = new DataOutputStream(imageSocket.getOutputStream());
+                dataOutputStream.writeInt(bytes.length);
+                dataOutputStream.write(bytes);
+                dataOutputStream.flush();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }, 0, 100, TimeUnit.MILLISECONDS);
+        scheduler.close();
 
         new Thread(() -> {
-            try (DataInputStream in = new DataInputStream(controlClient.getInputStream())) {
+            try {
+                DataInputStream controlInputStream = new DataInputStream(controlSocket.getInputStream());
                 while (true) {
-                    String command = in.readUTF();
-                    String[] parts = command.split(" ");
-                    if (parts.length >= 3 && parts[0].equals("CLICK")) {
-                        int x = Integer.parseInt(parts[1]);
-                        int y = Integer.parseInt(parts[2]);
-
+                    String[] actions =  controlInputStream.readUTF().split(" ");
+                    if (actions.length >= 3 && actions[0].equals("MOVE")) {
+                        int x = Integer.parseInt(actions[1]);
+                        int y = Integer.parseInt(actions[2]);
                         robot.mouseMove(x, y);
-                        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
                     }
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
         }).start();
+    }
 
-        while (true) {
-            BufferedImage screen = robot.createScreenCapture(screenRectangle);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(screen, "jpg", baos);
+    public void close() throws IOException {
+        imageSocket.close();
+        controlSocket.close();
+    }
 
-            byte[] imageBytes = baos.toByteArray();
-            DataOutputStream dos = new DataOutputStream(outputStream);
-            dos.writeInt(imageBytes.length);
-            dos.write(imageBytes);
-            dos.flush();
-
-            Thread.sleep(100);
+    public static void main(String[] args) throws IOException, AWTException {
+        if (args.length != 2) {
+            throw new IllegalArgumentException();
         }
+
+        int imagePort = Integer.parseInt(args[0]);
+        int controlPort = Integer.parseInt(args[1]);
+
+        Server server = new Server(imagePort, controlPort);
+        server.host();
+        server.close();
     }
 
 }
