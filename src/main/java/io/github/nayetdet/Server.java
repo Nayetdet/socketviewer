@@ -26,10 +26,17 @@ public class Server {
     public Server(int imagePort, int controlPort) throws IOException, AWTException {
         robot = new Robot();
         screenBounds = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+
         imageServerSocket = new ServerSocket(imagePort);
         controlServerSocket = new ServerSocket(controlPort);
         imageSocket = imageServerSocket.accept();
         controlSocket = controlServerSocket.accept();
+
+        DataOutputStream controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
+        controlOutputStream.writeInt(screenBounds.width);
+        controlOutputStream.writeInt(screenBounds.height);
+        controlOutputStream.flush();
+
         scheduler = Executors.newSingleThreadScheduledExecutor();
     }
 
@@ -38,7 +45,7 @@ public class Server {
             try {
                 BufferedImage screen = robot.createScreenCapture(screenBounds);
                 ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                ImageIO.write(screen, "jpg", byteArrayOutputStream);
+                ImageIO.write(screen, "png", byteArrayOutputStream);
 
                 byte[] bytes = byteArrayOutputStream.toByteArray();
                 DataOutputStream dataOutputStream = new DataOutputStream(imageSocket.getOutputStream());
@@ -55,7 +62,7 @@ public class Server {
                 DataInputStream controlInputStream = new DataInputStream(controlSocket.getInputStream());
                 while (true) {
                     String[] actions = controlInputStream.readUTF().split(" ");
-                    if (actions.length >= 3 && actions[0].equals("MOVE")) {
+                    if (actions.length >= 3 && actions[0].equals("CLICK")) {
                         int x = Integer.parseInt(actions[1]);
                         int y = Integer.parseInt(actions[2]);
                         robot.mouseMove(x, y);

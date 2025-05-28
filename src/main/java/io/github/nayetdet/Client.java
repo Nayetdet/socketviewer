@@ -3,7 +3,7 @@ package io.github.nayetdet;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionListener;
+import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -11,15 +11,23 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 
-public class Client extends JFrame implements MouseMotionListener {
+public class Client extends JFrame implements MouseListener {
 
     private final Socket imageSocket;
     private final Socket controlSocket;
     private final JLabel label;
+    private final int serverScreenWidth;
+    private final int serverScreenHeight;
+    private final DataOutputStream controlOutputStream;
 
     public Client(String host, int imagePort, int controlPort) throws IOException {
         imageSocket = new Socket(host, imagePort);
         controlSocket = new Socket(host, controlPort);
+
+        DataInputStream controlInputStream = new DataInputStream(controlSocket.getInputStream());
+        serverScreenWidth = controlInputStream.readInt();
+        serverScreenHeight = controlInputStream.readInt();
+        controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
 
         label = new JLabel();
         JScrollPane scrollPane = new JScrollPane(label);
@@ -29,7 +37,7 @@ public class Client extends JFrame implements MouseMotionListener {
         setSize(800, 600);
         setTitle("Client");
         setVisible(true);
-        label.addMouseMotionListener(this);
+        label.addMouseListener(this);
     }
 
     public void connect() throws IOException {
@@ -42,10 +50,12 @@ public class Client extends JFrame implements MouseMotionListener {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
             if (image != null) {
                 ImageIcon icon = new ImageIcon(image);
-                label.setIcon(icon);
-                label.setSize(icon.getIconWidth(), icon.getIconHeight());
-                label.setPreferredSize(label.getSize());
-                label.revalidate();
+                SwingUtilities.invokeLater(() -> {
+                    label.setIcon(icon);
+                    label.setSize(icon.getIconWidth(), icon.getIconHeight());
+                    label.setPreferredSize(label.getSize());
+                    label.revalidate();
+                });
             }
         }
     }
@@ -56,10 +66,17 @@ public class Client extends JFrame implements MouseMotionListener {
     }
 
     @Override
-    public void mouseMoved(MouseEvent e) {
+    public void mouseClicked(MouseEvent e) {
         try {
-            DataOutputStream controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
-            controlOutputStream.writeUTF("MOVE " + e.getX() + " " + e.getY());
+            int x = e.getX();
+            int y = e.getY();
+            int labelWidth = label.getWidth();
+            int labelHeight = label.getHeight();
+
+            int actualX = x * serverScreenWidth / labelWidth;
+            int actualY = y * serverScreenHeight / labelHeight;
+
+            controlOutputStream.writeUTF("CLICK " + actualX + " " + actualY);
             controlOutputStream.flush();
         } catch (IOException ex) {
             throw new RuntimeException(ex);
@@ -67,15 +84,27 @@ public class Client extends JFrame implements MouseMotionListener {
     }
 
     @Override
-    public void mouseDragged(MouseEvent e) {
+    public void mousePressed(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseReleased(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseExited(MouseEvent e) {
     }
 
     public static void main(String[] args) throws IOException {
         if (args.length != 3) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Usage: java Client <host> <imagePort> <controlPort>");
         }
 
-        String host =  args[0];
+        String host = args[0];
         int imagePort = Integer.parseInt(args[1]);
         int controlPort = Integer.parseInt(args[2]);
 
