@@ -17,9 +17,9 @@ public class Client extends JFrame implements MouseMotionListener {
     private final Socket controlSocket;
     private final JLabel label;
 
-    public Client(String imageHost, String controlHost, int imagePort, int controlPort) throws IOException {
-        imageSocket = new Socket(imageHost, imagePort);
-        controlSocket = new Socket(controlHost, controlPort);
+    public Client(String host, int imagePort, int controlPort) throws IOException {
+        imageSocket = new Socket(host, imagePort);
+        controlSocket = new Socket(host, controlPort);
 
         label = new JLabel();
         JScrollPane scrollPane = new JScrollPane(label);
@@ -71,16 +71,15 @@ public class Client extends JFrame implements MouseMotionListener {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 4) {
+        if (args.length != 3) {
             throw new IllegalArgumentException();
         }
 
-        String imageHost =  args[0];
-        String controlHost = args[1];
-        int imagePort = Integer.parseInt(args[2]);
-        int controlPort = Integer.parseInt(args[3]);
+        String host =  args[0];
+        int imagePort = Integer.parseInt(args[1]);
+        int controlPort = Integer.parseInt(args[2]);
 
-        Client client = new Client(imageHost, controlHost, imagePort, controlPort);
+        Client client = new Client(host, imagePort, controlPort);
         client.connect();
         client.close();
     }

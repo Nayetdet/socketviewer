@@ -17,19 +17,23 @@ public class Server {
 
     private final Robot robot;
     private final Rectangle screenBounds;
-
     private final Socket imageSocket;
     private final Socket controlSocket;
+    private final ServerSocket imageServerSocket;
+    private final ServerSocket controlServerSocket;
+    private final ScheduledExecutorService scheduler;
 
     public Server(int imagePort, int controlPort) throws IOException, AWTException {
         robot = new Robot();
         screenBounds = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
-        imageSocket = new ServerSocket(imagePort).accept();
-        controlSocket = new ServerSocket(controlPort).accept();
+        imageServerSocket = new ServerSocket(imagePort);
+        controlServerSocket = new ServerSocket(controlPort);
+        imageSocket = imageServerSocket.accept();
+        controlSocket = controlServerSocket.accept();
+        scheduler = Executors.newSingleThreadScheduledExecutor();
     }
 
-    public void host() throws IOException {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    public void host() {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 BufferedImage screen = robot.createScreenCapture(screenBounds);
@@ -42,16 +46,15 @@ public class Server {
                 dataOutputStream.write(bytes);
                 dataOutputStream.flush();
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                scheduler.shutdown();
             }
         }, 0, 100, TimeUnit.MILLISECONDS);
-        scheduler.close();
 
-        new Thread(() -> {
+        Thread controlThread = new Thread(() -> {
             try {
                 DataInputStream controlInputStream = new DataInputStream(controlSocket.getInputStream());
                 while (true) {
-                    String[] actions =  controlInputStream.readUTF().split(" ");
+                    String[] actions = controlInputStream.readUTF().split(" ");
                     if (actions.length >= 3 && actions[0].equals("MOVE")) {
                         int x = Integer.parseInt(actions[1]);
                         int y = Integer.parseInt(actions[2]);
@@ -61,12 +64,22 @@ public class Server {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }).start();
+        });
+
+        controlThread.start();
+        try {
+            controlThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     public void close() throws IOException {
+        scheduler.shutdown();
         imageSocket.close();
         controlSocket.close();
+        imageServerSocket.close();
+        controlServerSocket.close();
     }
 
     public static void main(String[] args) throws IOException, AWTException {
@@ -78,8 +91,15 @@ public class Server {
         int controlPort = Integer.parseInt(args[1]);
 
         Server server = new Server(imagePort, controlPort);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                server.close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }));
+
         server.host();
-        server.close();
     }
 
 }
